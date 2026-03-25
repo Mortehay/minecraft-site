@@ -58,7 +58,6 @@ export function Home() {
               The Ultimate Survival Experience
             </p>
             
-            <StatusBar online={true} ping={12} playerCount="42/100 Players" />
           </div>
 
           <GlassCard className="max-w-2xl mx-auto">

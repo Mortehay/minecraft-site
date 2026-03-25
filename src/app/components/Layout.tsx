@@ -8,7 +8,7 @@ const navItems = [
   { path: '/how-to-join', label: 'How to Join' },
   { path: '/about', label: 'About' },
   { path: '/wiki', label: 'Plugin Wiki' },
-  { path: '/dashboard', label: 'Dashboard' }
+  //{ path: '/dashboard', label: 'Dashboard' }
 ];
 
 export function Layout() {
@@ -16,11 +16,7 @@ export function Layout() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-[#e8e8ea]" style={{ fontFamily: 'var(--font-sans)' }}>
-      <Favicon />
-      {/* Top Status Bar */}
-      <div className="fixed top-0 right-0 z-50 p-4">
-        <StatusBar online={true} ping={12} playerCount="42/100" />
-      </div>
+
 
       {/* Navigation */}
       <nav className="sticky top-0 z-40 bg-[#1a1a1f]/80 backdrop-blur-md border-b border-white/10">
@@ -54,6 +50,7 @@ export function Layout() {
                   {item.label}
                 </Link>
               ))}
+              <StatusBar online={true} ping={12} playerCount="42/100" />
             </div>
           </div>
         </div>
