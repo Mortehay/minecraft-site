@@ -1,0 +1,35 @@
+services:
+  # Next.js Frontend
+  next-app:
+    command: npm run dev
+    build: 
+      context: ../../src
+      dockerfile: ../compose/develop/next-app/Dockerfile
+      target: builder
+    ports:
+      - "13000:3000"
+    environment:
+      - NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - DATABASE_URL=postgresql://postgres:password@db:5432/postgres
+    volumes:
+      - ../../src:/app
+      - /app/node_modules
+    depends_on:
+      - db
+
+  # Postgres Database (The core of Supabase)
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+volumes:
+  db_data:
