@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, Outlet, useLocation } from 'react-router';
 import { StatusBar } from './StatusBar';
+import { Favicon } from './Favicon';
 
 const navItems = [
   { path: '/', label: 'Home' },
@@ -15,6 +16,7 @@ export function Layout() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-[#e8e8ea]" style={{ fontFamily: 'var(--font-sans)' }}>
+      <Favicon />
       {/* Top Status Bar */}
       <div className="fixed top-0 right-0 z-50 p-4">
         <StatusBar online={true} ping={12} playerCount="42/100" />
