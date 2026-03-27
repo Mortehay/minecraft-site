@@ -31,7 +31,9 @@ services:
   # In production this role is replaced entirely by Supabase cloud.
   # ────────────────────────────────────────────────────────────────────
   db:
-    image: supabase/postgres:15.14.1.102-pgctld-1_amd64
+    build:
+      context: ./db
+      dockerfile: Dockerfile
     restart: always
     environment:
       - POSTGRES_USER=postgres
@@ -43,6 +45,17 @@ services:
       - db_data:/var/lib/postgresql/data
       # Mount init SQL so the schema is auto-created on first start
       - ./db/init.sql:/docker-entrypoint-initdb.d/z-init.sql:ro
+    command: 
+      - "postgres"
+      - "-c"
+      - "ssl=on"
+      - "-c"
+      - "ssl_cert_file=/etc/postgresql/server.crt"
+      - "-c"
+      - "ssl_key_file=/etc/postgresql/server.key"
+      - "-h"
+      - "0.0.0.0"
+
 
   # ────────────────────────────────────────────────────────────────────
   # MailHog  –  catches ALL outgoing emails in local dev

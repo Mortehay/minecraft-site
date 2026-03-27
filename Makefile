@@ -1,6 +1,8 @@
 # Variables to keep things clean
 COMPOSE_FILE := compose/develop/docker-compose.yml
 SERVICE_NAME := next-app
+DB_PASSWORD ?= password
+DB_URL=postgresql://postgres:$(DB_PASSWORD)@127.0.0.1:5432/postgres
 
 .PHONY: dev build stop clean logs shell
 
@@ -49,6 +51,11 @@ rebuild-clean:
 	docker compose -f $(COMPOSE_FILE) build --no-cache
 	docker compose -f $(COMPOSE_FILE) up -d
 
+# Rebuild
+rebuild:
+	docker compose -f $(COMPOSE_FILE) build
+	docker compose -f $(COMPOSE_FILE) up -d
+
 # Shortcut to just rebuild the specific service without cache
 rebuild-app:
 	docker compose -f $(COMPOSE_FILE) build --no-cache $(SERVICE_NAME)
@@ -61,3 +68,19 @@ db-push:
 # Generate Prisma Client
 db-gen:
 	docker compose -f $(COMPOSE_FILE) exec $(SERVICE_NAME) npx prisma generate --schema=./prisma/schema.prisma
+
+# 1. Initialize Supabase project structure
+db-init:
+	npx supabase init
+
+# 2. Reset the database
+# We use the --db-url flag to point the CLI to your existing Docker DB
+db-reset:
+	npx supabase db reset --local --db-url "$(DB_URL)"
+
+# 3. Combined command to refresh everything
+db-refresh:
+	docker compose -f compose/develop/docker-compose.yml up -d db
+	@echo "Waiting for database to be ready..."
+	@sleep 5
+	npx supabase db reset --db-url "$(DB_URL)" --yes
