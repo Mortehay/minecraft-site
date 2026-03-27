@@ -1,0 +1,36 @@
+{
+  "name": "Minecraft Site Dev",
+  // Path to your existing compose file relative to this file
+  "dockerComposeFile": ["../compose/develop/docker-compose.yml"],
+  
+  // The service name from your docker-compose.yml
+  "service": "next-app",
+  
+  // The folder inside the container where your code is mounted
+  "workspaceFolder": "/app", 
+  "remoteUser": "node",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "dsznajder.es7-react-js-snippets",
+        "bradlc.vscode-tailwindcss",
+        "ms-vscode.vscode-typescript-next"
+      ],
+      "settings": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true,
+        "typescript.tsdk": "node_modules/typescript/lib",
+        "typescript.enablePromptUseWorkspaceTsdk": true
+      }
+    }
+  },
+
+  // Ensure the container keeps running
+  "shutdownAction": "stopCompose",
+  
+  // Optional: Run this if you want to ensure types are fresh every time you attach
+  "postCreateCommand": "npm install"
+}

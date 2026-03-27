@@ -43,3 +43,21 @@ npm-update:
 # 3. Add a specific package (Usage: make npm-add PKG=lucide-react)
 npm-add:
 	docker compose -f $(COMPOSE_FILE) exec $(SERVICE_NAME) npm install $(PKG)
+
+# Force a total rebuild from scratch (no cache)
+rebuild-clean:
+	docker compose -f $(COMPOSE_FILE) build --no-cache
+	docker compose -f $(COMPOSE_FILE) up -d
+
+# Shortcut to just rebuild the specific service without cache
+rebuild-app:
+	docker compose -f $(COMPOSE_FILE) build --no-cache $(SERVICE_NAME)
+	docker compose -f $(COMPOSE_FILE) up -d $(SERVICE_NAME)
+
+# Database Sync (Run from /app, pointing to the schema file)
+db-push:
+	docker compose -f $(COMPOSE_FILE) exec $(SERVICE_NAME) npx prisma db push --schema=./prisma/schema.prisma
+
+# Generate Prisma Client
+db-gen:
+	docker compose -f $(COMPOSE_FILE) exec $(SERVICE_NAME) npx prisma generate --schema=./prisma/schema.prisma

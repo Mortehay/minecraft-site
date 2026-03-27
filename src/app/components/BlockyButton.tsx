@@ -3,6 +3,7 @@ import React from 'react';
 interface BlockyButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'ghost';
   children: React.ReactNode;
+  className?: string;
 }
 
 export function BlockyButton({ 

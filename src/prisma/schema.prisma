@@ -1,0 +1,65 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["auth", "public"]
+}
+
+// Supabase's built-in auth.users table
+model User {
+  id                 String    @id @db.Uuid
+  email              String?   @unique
+  phone              String?   @unique
+  created_at         DateTime?
+  updated_at         DateTime?
+  last_sign_in_at    DateTime?
+  raw_user_meta_data Json?
+  raw_app_meta_data  Json?
+
+  // Relation to the public profile
+  profile Profile?
+
+  @@map("users")
+  @@schema("auth")
+}
+
+model Profile {
+  id          String   @id @db.Uuid // Links to auth.users in Supabase
+  full_name   String?
+  avatar_url  String?
+  role        String   @default("player")
+  bio         String?
+  mc_username String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  
+  // Relations
+  user        User     @relation(fields: [id], references: [id], onDelete: Cascade)
+  news        News[]   @relation("AuthorProfile")
+
+  @@map("profiles")
+  @@schema("public")
+}
+
+model News {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title      String
+  content    Json?
+  image_url  String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  published  Boolean  @default(false)
+  author_id  String   @db.Uuid
+  
+  // Relations
+  author     Profile  @relation("AuthorProfile", fields: [author_id], references: [id], onDelete: Cascade)
+
+  @@map("news")
+  @@schema("public")
+}

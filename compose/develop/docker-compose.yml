@@ -1,35 +1,61 @@
 services:
-  # Next.js Frontend
+  # Vite / React Frontend
   next-app:
-    command: npm run dev
-    build: 
+    command: /bin/sh -c "npm install && (npm run dev || tail -f /dev/null)"
+    build:
       context: ../../src
       dockerfile: ../compose/develop/next-app/Dockerfile
-      target: builder
+      target: base
     ports:
       - "13000:3000"
     environment:
-      - NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}
-      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
-      - DATABASE_URL=postgresql://postgres:password@db:5432/postgres
+      # --- Supabase (auth + storage) ---------------------------------
+      # For local dev you can keep using your Supabase cloud project
+      # OR point to a self-hosted Supabase stack if you set one up.
+      - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+      - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+      - VITE_SUPABASE_PASSWORD=${VITE_SUPABASE_PASSWORD}
+      # --- App config ------------------------------------------------
+      - VITE_ADMIN_EMAIL=${ADMIN_EMAIL}
+      # --- Local DB (for custom app data beyond Supabase auth) -------
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD:-password}@db:5432/postgres
     volumes:
       - ../../src:/app
-      - /app/node_modules
+      - node_modules:/app/node_modules
     depends_on:
       - db
+      - mailhog
 
-  # Postgres Database (The core of Supabase)
+  # ────────────────────────────────────────────────────────────────────
+  # Local PostgreSQL  (app data / mirrors your Supabase schema for dev)
+  # In production this role is replaced entirely by Supabase cloud.
+  # ────────────────────────────────────────────────────────────────────
   db:
-    image: postgres:15-alpine
+    image: supabase/postgres:15.14.1.102-pgctld-1_amd64
     restart: always
     environment:
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=password
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-password}
       - POSTGRES_DB=postgres
     ports:
       - "5432:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
+      # Mount init SQL so the schema is auto-created on first start
+      - ./db/init.sql:/docker-entrypoint-initdb.d/z-init.sql:ro
+
+  # ────────────────────────────────────────────────────────────────────
+  # MailHog  –  catches ALL outgoing emails in local dev
+  # Web UI:  http://localhost:8025
+  # SMTP:    localhost:1025
+  # ────────────────────────────────────────────────────────────────────
+  mailhog:
+    image: mailhog/mailhog:latest
+    restart: always
+    ports:
+      - "11025:1025" # SMTP
+      - "18025:8025" # Web UI
 
 volumes:
   db_data:
+  node_modules:

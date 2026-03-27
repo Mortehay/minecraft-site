@@ -1,6 +1,8 @@
-import React from 'react';
-import { Sword, Coins, Ghost } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Users, Server, Globe, Shield, Loader2 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import { GlassCard } from '../components/GlassCard';
+import { supabase } from '../../lib/supabase';
 
 const features = [
   {
@@ -39,6 +41,52 @@ const features = [
 ];
 
 export function About() {
+  const [pageInfo, setPageInfo] = useState<{ title: string; content: string } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase
+      .from('page_content')
+      .select('title, content')
+      .eq('page_slug', 'about')
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data && data.content && (data.content as any).body) {
+          setPageInfo({ title: data.title ?? '', content: (data.content as any).body });
+        }
+        setLoading(false);
+      });
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-12 h-12 text-[#10b981] animate-spin" />
+      </div>
+    );
+  }
+
+  // If custom content found, render it
+  if (pageInfo) {
+    return (
+      <div className="min-h-screen py-12 px-4 bg-[#0a0a0f] text-[#e8e8ea]">
+        <div className="max-w-4xl mx-auto ProseMirror prose prose-invert prose-emerald">
+          <h1 
+            className="text-4xl mb-4 text-[#10b981] text-center"
+            style={{ fontFamily: 'var(--font-minecraft)' }}
+          >
+            {pageInfo.title}
+          </h1>
+          <div className="mt-8 bg-[#13131a] border border-white/10 rounded-xl p-8 shadow-xl">
+            <ReactMarkdown className="markdown-container text-[#9ca3af] leading-relaxed">
+              {pageInfo.content}
+            </ReactMarkdown>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen py-12 px-4">
       <div className="max-w-6xl mx-auto">
@@ -179,7 +227,7 @@ export function About() {
           ].map((stat, index) => (
             <div 
               key={index}
-              className="text-center p-6 bg-[#1a1a1f]/60 backdrop-blur-md border border-white/10 rounded"
+              className="text-center p-6 bg-[#1a1a1f]/60 backdrop-blur-md border border-white/10 rounded overflow-hidden"
             >
               <div 
                 className="text-3xl text-[#10b981] mb-2"

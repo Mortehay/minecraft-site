@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
-import { Search } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Search, Loader2 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import { GlassCard } from '../components/GlassCard';
+import { supabase } from '../../lib/supabase';
 
 const categories = [
   { id: 'all', name: 'All Plugins' },
@@ -11,7 +13,7 @@ const categories = [
   { id: 'social', name: 'Social' }
 ];
 
-const plugins = [
+const staticPlugins = [
   {
     id: 1,
     name: 'EssentialsX',
@@ -97,13 +99,58 @@ const plugins = [
 export function PluginWiki() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [pageInfo, setPageInfo] = useState<{ title: string; content: string } | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const filteredPlugins = plugins.filter(plugin => {
+  useEffect(() => {
+    supabase
+      .from('page_content')
+      .select('title, content')
+      .eq('page_slug', 'wiki')
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data && data.content && (data.content as any).body) {
+          setPageInfo({ title: data.title ?? '', content: (data.content as any).body });
+        }
+        setLoading(false);
+      });
+  }, []);
+
+  const filteredPlugins = staticPlugins.filter(plugin => {
     const matchesCategory = selectedCategory === 'all' || plugin.category === selectedCategory;
     const matchesSearch = plugin.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           plugin.function.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCategory && matchesSearch;
   });
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-12 h-12 text-[#10b981] animate-spin" />
+      </div>
+    );
+  }
+
+  // If custom content found, render it
+  if (pageInfo) {
+    return (
+      <div className="min-h-screen py-12 px-4 bg-[#0a0a0f] text-[#e8e8ea]">
+        <div className="max-w-4xl mx-auto ProseMirror prose prose-invert prose-emerald">
+          <h1 
+            className="text-4xl mb-4 text-[#10b981] text-center"
+            style={{ fontFamily: 'var(--font-minecraft)' }}
+          >
+            {pageInfo.title}
+          </h1>
+          <div className="mt-8 bg-[#13131a] border border-white/10 rounded-xl p-8 shadow-xl">
+            <ReactMarkdown className="markdown-container text-[#9ca3af] leading-relaxed">
+              {pageInfo.content}
+            </ReactMarkdown>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen py-12 px-4">
@@ -146,7 +193,7 @@ export function PluginWiki() {
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-[#9ca3af]">Total Plugins:</span>
-                    <span className="text-[#10b981]">{plugins.length}</span>
+                    <span className="text-[#10b981]">{staticPlugins.length}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-[#9ca3af]">Categories:</span>
