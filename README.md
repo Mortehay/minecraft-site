@@ -147,13 +147,13 @@ This runs `docker compose up -d` which starts:
 ### 4. Apply the database schema + seed data
 
 ```bash
-make db-refresh
+make db-reset
 ```
 
 This does three things:
-1. Ensures the `db` container is running
-2. Waits for Postgres to be ready
-3. Runs `supabase db reset` which applies all migrations from `supabase/migrations/` and seeds data from `supabase/seed.sql`
+1. Tears down the existing `db` container and wipes the Docker volume.
+2. Re-creates the `db` from scratch.
+3. Automatically evaluates all SQL scripts mapped from `/compose/develop/db/init.sql` directly upon database startup, enforcing the schema entirely automatically.
 
 ### 5. Open the app
 
@@ -182,8 +182,7 @@ Run these from the project root:
 | `make npm-update`     | Run `npm update` inside the container                  |
 | `make npm-add PKG=x`  | Install a new package (e.g. `make npm-add PKG=axios`)  |
 | **Database**           |                                                        |
-| `make db-refresh`     | Reset DB: apply migrations + seed data                 |
-| `make db-reset`       | Reset DB via Supabase CLI (local mode)                 |
+| `make db-reset`       | Cleanly reprovision database natively from init.sql    |
 | `make db-push`        | Push Prisma schema to DB                               |
 | `make db-gen`         | Regenerate Prisma client                               |
 | `make db-init`        | Initialize Supabase project structure                  |
@@ -192,7 +191,7 @@ Run these from the project root:
 
 ## Database Schema
 
-The schema is defined in `supabase/migrations/` and auto-applied by `make db-refresh`.
+The schema is heavily consolidated natively and auto-applied strictly from within `compose/develop/db/init.sql`.
 
 ### Tables
 
@@ -246,7 +245,7 @@ When a user signs up through Supabase Auth, a trigger automatically creates a ro
 
 ## Seed Data
 
-After `make db-refresh`, the database is seeded with test data (from `supabase/seed.sql`):
+Upon rebuilding (`make db-reset`), the database includes sample static seeding data right inside `init.sql`:
 
 | User                | Role   | MC Username   |
 | ------------------- | ------ | ------------- |
@@ -295,9 +294,9 @@ Your `VITE_SUPABASE_ANON_KEY` doesn't match the JWT secret used by your Supabase
 
 ### `PGRST205 — Could not find the table`
 
-The migration hasn't been applied. Run:
+The database schema hasn't provisioned cleanly. Run:
 ```bash
-make db-refresh
+make db-reset
 ```
 
 ### WSL2: Slow `npm install`
@@ -315,7 +314,5 @@ Make sure the project lives inside the Linux filesystem:
 
 To fully wipe the DB volume and start fresh:
 ```bash
-make clean
-make dev
-make db-refresh
+make db-reset
 ```

@@ -14,14 +14,8 @@
 ALTER DATABASE postgres REFRESH COLLATION VERSION;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp"; 
 
--- Your existing schema...
-CREATE SCHEMA IF NOT EXISTS auth;
-
-CREATE TABLE IF NOT EXISTS auth.users (
-  id          uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-  email       text UNIQUE NOT NULL,
-  created_at  timestamp with time zone DEFAULT now()
-);
+-- auth.users is now managed directly by the official Supabase gotrue container!
+-- (The stub was removed to prevent migration collision with real Supabase Auth)
 
 -- ────────────────────────────────────────────────────────────
 -- public.profiles  (user display info + role)

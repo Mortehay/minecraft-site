@@ -1,3 +1,4 @@
+name: minecraft-site
 services:
   # Vite / React Frontend
   next-app:
@@ -9,26 +10,25 @@ services:
     ports:
       - "13000:3000"
     environment:
-      # --- Supabase (auth + storage) ---------------------------------
-      # For local dev you can keep using your Supabase cloud project
-      # OR point to a self-hosted Supabase stack if you set one up.
+      # We point the app to Kong, which routes everything on port 54321
       - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
       - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
       - VITE_SUPABASE_PASSWORD=${VITE_SUPABASE_PASSWORD}
-      # --- App config ------------------------------------------------
       - VITE_ADMIN_EMAIL=${ADMIN_EMAIL}
-      # --- Local DB (for custom app data beyond Supabase auth) -------
-      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD:-password}@db:5432/postgres
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD:-postgres}@db:5432/postgres
     volumes:
       - ../../src:/app
       - node_modules:/app/node_modules
     depends_on:
-      - db
-      - mailhog
+      db:
+        condition: service_healthy
+      kong:
+        condition: service_started
+      mailhog:
+        condition: service_started
 
   # ────────────────────────────────────────────────────────────────────
-  # Local PostgreSQL  (app data / mirrors your Supabase schema for dev)
-  # In production this role is replaced entirely by Supabase cloud.
+  # SUPABASE STACK (Postgres, Kong, Gotrue, Rest, Storage, ImgProxy)
   # ────────────────────────────────────────────────────────────────────
   db:
     build:
@@ -36,31 +36,152 @@ services:
       dockerfile: Dockerfile
     restart: always
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-password}
+      - POSTGRES_HOST=/var/run/postgresql
+      - PGPORT=5432
+      - POSTGRES_PORT=5432
+      - PGPASSWORD=${DB_PASSWORD:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+      - PGDATABASE=postgres
       - POSTGRES_DB=postgres
+      - JWT_SECRET=${SUPABASE_JWT_SECRET}
+      - JWT_EXP=3600
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     volumes:
       - db_data:/var/lib/postgresql/data
-      # Mount init SQL so the schema is auto-created on first start
-      - ./db/init.sql:/docker-entrypoint-initdb.d/z-init.sql:ro
-    command: 
-      - "postgres"
-      - "-c"
-      - "ssl=on"
-      - "-c"
-      - "ssl_cert_file=/etc/postgresql/server.crt"
-      - "-c"
-      - "ssl_key_file=/etc/postgresql/server.key"
-      - "-h"
-      - "0.0.0.0"
+      - ./db/supabase-init/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:ro
+      - ./db/supabase-init/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:ro
+      - ./db/supabase-init/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:ro
+      - ./db/supabase-init/logs.sql:/docker-entrypoint-initdb.d/migrations/99-logs.sql:ro
+      - ./db/supabase-init/webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:ro
+      - ./db/supabase-init/_supabase.sql:/docker-entrypoint-initdb.d/migrations/97-_supabase.sql:ro
+      - ./db/init.sql:/docker-entrypoint-initdb.d/z-custom-init.sql:ro
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
 
+  kong:
+    image: kong/kong:3.9.1
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "54321:8000" # Expose gateway to host (simulating CLI port 54321)
+    environment:
+      - KONG_DATABASE=off
+      - KONG_PLUGINS=request-transformer,cors,key-auth,acl,basic-auth,request-termination,ip-restriction,post-function
+      - KONG_DNS_ORDER=LAST,A,CNAME
+      - KONG_DNS_NOT_FOUND_TTL=1
+      - KONG_NGINX_PROXY_PROXY_BUFFER_SIZE=160k
+      - KONG_NGINX_PROXY_PROXY_BUFFERS=64 160k
+      - KONG_PROXY_ACCESS_LOG=/dev/stdout combined
+      - SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - DASHBOARD_USERNAME=supabase
+      - DASHBOARD_PASSWORD=supabase
+      - KONG_DECLARATIVE_CONFIG=/usr/local/kong/kong.yml
+      # Pass keys through exactly as variables for Kong to substitute 
+      - SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+      - SUPABASE_PUBLISHABLE_KEY=${VITE_SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - SUPABASE_SECRET_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - LUA_AUTH_EXPR=kong.request.get_header("Authorization") or (kong.request.get_query_arg("apikey") and "Bearer " .. kong.request.get_query_arg("apikey")) or "Bearer " .. os.getenv("SUPABASE_ANON_KEY")
+      - LUA_RT_WS_EXPR=kong.request.get_query_arg("apikey") or (kong.request.get_header("Authorization") and string.match(kong.request.get_header("Authorization"), "^Bearer %s+(.*)")) or os.getenv("SUPABASE_ANON_KEY")
+    volumes:
+      - ./api/kong.yml:/home/kong/temp.yml:ro,z
+      - ./api/kong-entrypoint.sh:/home/kong/kong-entrypoint.sh:ro,z
+    entrypoint: /home/kong/kong-entrypoint.sh
+
+  rest:
+    image: postgrest/postgrest:v14.6
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - PGRST_DB_URI=postgres://authenticator:${DB_PASSWORD:-postgres}@db:5432/postgres
+      - PGRST_DB_SCHEMAS=public,storage,auth,graphql_public
+      - PGRST_DB_EXTRA_SEARCH_PATH=public
+      - PGRST_DB_ANON_ROLE=anon
+      - PGRST_JWT_SECRET=${SUPABASE_JWT_SECRET}
+      - PGRST_APP_SETTINGS_JWT_SECRET=${SUPABASE_JWT_SECRET}
+      - PGRST_APP_SETTINGS_JWT_EXP=3600
+      - PGRST_DB_USE_LEGACY_GUCS=false
+
+  auth:
+    container_name: minecraft-site-auth-1
+    image: supabase/gotrue:v2.186.0
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - GOTRUE_API_HOST=0.0.0.0
+      - GOTRUE_API_PORT=9999
+      - API_EXTERNAL_URL=${API_EXTERNAL_URL:-http://localhost:54321}
+      - GOTRUE_DB_DRIVER=postgres
+      - GOTRUE_DB_DATABASE_URL=postgres://supabase_auth_admin:${DB_PASSWORD:-postgres}@db:5432/postgres
+      - GOTRUE_SITE_URL=${GOTRUE_SITE_URL:-http://localhost:13000}
+      - GOTRUE_URI_ALLOW_LIST=${GOTRUE_URI_ALLOW_LIST:-http://localhost:13000/*}
+      - GOTRUE_JWT_SECRET=${SUPABASE_JWT_SECRET}
+      - GOTRUE_JWT_EXP=${GOTRUE_JWT_EXP:-3600}
+      - GOTRUE_JWT_DEFAULT_GROUP_NAME=authenticated
+      - GOTRUE_DB_MIGRATIONS_PATH=/usr/local/etc/gotrue/migrations
+      - GOTRUE_EXTERNAL_EMAIL_ENABLED=true
+      - GOTRUE_MAILER_SECURE_EMAIL_CHANGE_ENABLED=true
+      - GOTRUE_MAILER_AUTOCONFIRM=${GOTRUE_MAILER_AUTOCONFIRM:-false}
+      - GOTRUE_SMTP_ADMIN_EMAIL=admin@minecraft-site.local
+      - GOTRUE_SMTP_HOST=mailhog
+      - GOTRUE_SMTP_PORT=1025
+      - GOTRUE_SMTP_USER=
+      - GOTRUE_SMTP_PASS=
+      - GOTRUE_SMTP_SENDER_NAME=Admin
+
+  storage:
+    image: supabase/storage-api:v1.44.2
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+      rest:
+        condition: service_started
+      imgproxy:
+        condition: service_started
+    environment:
+      - ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+      - SERVICE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - POSTGREST_URL=http://rest:3000
+      - AUTH_JWT_SECRET=${SUPABASE_JWT_SECRET}
+      - DATABASE_URL=postgres://supabase_storage_admin:${DB_PASSWORD:-postgres}@db:5432/postgres
+      - STORAGE_PUBLIC_URL=http://localhost:54321/storage/v1/s3
+      - REQUEST_ALLOW_X_FORWARDED_PATH=true
+      - FILE_SIZE_LIMIT=52428800
+      - STORAGE_BACKEND=file
+      - FILE_STORAGE_BACKEND_PATH=/var/lib/storage
+      - TENANT_ID=stub
+      - REGION=stub
+      - ENABLE_IMAGE_TRANSFORMATION=true
+      - IMGPROXY_URL=http://imgproxy:5001
+    volumes:
+      - storage_data:/var/lib/storage:z
+
+  imgproxy:
+    image: darthsim/imgproxy:v3.30.1
+    restart: always
+    environment:
+      - IMGPROXY_BIND=:5001
+      - IMGPROXY_LOCAL_FILESYSTEM_ROOT=/
+      - IMGPROXY_USE_ETAG=true
+      - IMGPROXY_AUTO_WEBP=true
+    volumes:
+      - storage_data:/var/lib/storage:z
 
   # ────────────────────────────────────────────────────────────────────
   # MailHog  –  catches ALL outgoing emails in local dev
-  # Web UI:  http://localhost:8025
-  # SMTP:    localhost:1025
   # ────────────────────────────────────────────────────────────────────
   mailhog:
     image: mailhog/mailhog:latest
@@ -72,3 +193,4 @@ services:
 volumes:
   db_data:
   node_modules:
+  storage_data:
